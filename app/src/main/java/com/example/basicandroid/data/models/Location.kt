@@ -1,6 +1,12 @@
 package com.example.basicandroid.data.models
 
+import androidx.room.ColumnInfo
+import androidx.room.Entity
+import androidx.room.PrimaryKey
+
+@Entity(tableName = "location")
 data class Location(
-    val name: String? = null,
-    val dimension: String? = null
+    @PrimaryKey(autoGenerate = false) var id: String,
+    @ColumnInfo var name: String? = null,
+    @ColumnInfo var dimension: String? = null
 )

@@ -1,6 +1,7 @@
 package com.example.basicandroid.data.repository
 
 import androidx.paging.PagingSource
+import androidx.paging.PagingState
 import com.example.basicandroid.data.api.ApiService
 import com.example.basicandroid.data.models.Location
 import kotlinx.coroutines.delay
@@ -12,6 +13,7 @@ class LocationPagingSource(private val apiService: ApiService): PagingSource<Int
             val response = apiService.getPageLocation(nextKey)
             val dataList = response.results ?: mutableListOf()
             val isEnd = response.info?.next.isNullOrEmpty()
+            delay(500)
             LoadResult.Page(
                 data = dataList,
                 prevKey = null,
@@ -31,5 +33,9 @@ class LocationPagingSource(private val apiService: ApiService): PagingSource<Int
     }
     companion object {
         private const val FIRST_PAGE = 1
+    }
+
+    override fun getRefreshKey(state: PagingState<Int, Location>): Int? {
+        TODO("Not yet implemented")
     }
 }
