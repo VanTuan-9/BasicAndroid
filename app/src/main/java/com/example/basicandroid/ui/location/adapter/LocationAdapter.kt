@@ -1,15 +1,13 @@
 package com.example.basicandroid.ui.location.adapter
 
-import android.util.Log
 import android.view.ViewGroup
 import androidx.paging.PagingDataAdapter
 import androidx.recyclerview.widget.DiffUtil
-import com.example.basicandroid.data.models.Location
+import com.example.basicandroid.data.roomdb.table.LocationTable
 
 class LocationAdapter(
-    private val clickItem: (location: Location) -> Unit
-)
-    : PagingDataAdapter<Location, LocationViewHolder>(DiffUtilCallBack()) {
+    private val clickItem: (location: LocationTable) -> Unit
+): PagingDataAdapter<LocationTable, LocationViewHolder>(DiffUtilCallBack()) {
     override fun onBindViewHolder(holder: LocationViewHolder, position: Int) {
         getItem(position)?.run {
             holder.bind(this)
@@ -20,13 +18,13 @@ class LocationAdapter(
         return LocationViewHolder.create(parent, clickItem)
     }
 
-    class DiffUtilCallBack: DiffUtil.ItemCallback<Location>() {
-        override fun areItemsTheSame(oldItem: Location, newItem: Location): Boolean {
-            return oldItem.name == newItem.name
+    class DiffUtilCallBack: DiffUtil.ItemCallback<LocationTable>() {
+        override fun areItemsTheSame(oldItem: LocationTable, newItem: LocationTable): Boolean {
+            return oldItem.id == newItem.id
         }
 
-        override fun areContentsTheSame(oldItem: Location, newItem: Location): Boolean {
-            return oldItem.dimension == newItem.dimension
+        override fun areContentsTheSame(oldItem: LocationTable, newItem: LocationTable): Boolean {
+            return oldItem.id == newItem.id
         }
     }
 }

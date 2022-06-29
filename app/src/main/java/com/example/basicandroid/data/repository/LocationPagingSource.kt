@@ -3,11 +3,11 @@ package com.example.basicandroid.data.repository
 import androidx.paging.PagingSource
 import androidx.paging.PagingState
 import com.example.basicandroid.data.api.ApiService
-import com.example.basicandroid.data.models.Location
+import com.example.basicandroid.data.roomdb.table.LocationTable
 import kotlinx.coroutines.delay
 
-class LocationPagingSource(private val apiService: ApiService): PagingSource<Int, Location>() {
-    override suspend fun load(params: LoadParams<Int>): LoadResult<Int, Location> {
+class LocationPagingSource(private val apiService: ApiService): PagingSource<Int, LocationTable>() {
+    override suspend fun load(params: LoadParams<Int>): LoadResult<Int, LocationTable> {
         return kotlin.runCatching {
             val nextKey = params.key ?: FIRST_PAGE
             val response = apiService.getPageLocation(nextKey)
@@ -35,7 +35,7 @@ class LocationPagingSource(private val apiService: ApiService): PagingSource<Int
         private const val FIRST_PAGE = 1
     }
 
-    override fun getRefreshKey(state: PagingState<Int, Location>): Int? {
+    override fun getRefreshKey(state: PagingState<Int, LocationTable>): Int? {
         TODO("Not yet implemented")
     }
 }

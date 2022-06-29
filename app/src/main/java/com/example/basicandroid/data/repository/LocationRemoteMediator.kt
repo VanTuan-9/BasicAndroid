@@ -5,106 +5,123 @@ import androidx.paging.ExperimentalPagingApi
 import androidx.paging.LoadType
 import androidx.paging.PagingState
 import androidx.paging.RemoteMediator
-import com.example.basicandroid.data.api.ApiService
-import com.example.basicandroid.data.models.Location
-import com.example.basicandroid.data.models.LocationRemoteKey
-import com.example.basicandroid.data.roomdb.LocationDB
-import java.lang.Exception
 import androidx.room.withTransaction
+import com.example.basicandroid.data.api.ApiService
+import com.example.basicandroid.data.roomdb.LocationDB
+import com.example.basicandroid.data.roomdb.table.LocationKeyTable
+import com.example.basicandroid.data.roomdb.table.LocationTable
+import com.google.gson.Gson
 
 @ExperimentalPagingApi
 class LocationRemoteMediator(
     private val database: LocationDB,
     private val apiService: ApiService
-): RemoteMediator<Int, Location>() {
+) : RemoteMediator<Int, LocationTable>() {
     private val locationDao = database.locationDao()
     private val locationRemoteKeyDao = database.locationRemoteKeyDao()
 
     override suspend fun load(
         loadType: LoadType,
-        state: PagingState<Int, Location>
+        state: PagingState<Int, LocationTable>
     ): MediatorResult {
-        Log.d("PAGE", "b")
         return try {
-            val currentPage =when(loadType) {
+            // Xác định trạng thái load
+            // xác định key load
+            val currentPage = when (loadType) {
                 LoadType.REFRESH -> {
-                    Log.d("PAGE", "a")
-                    val remoteKeys = getRemoteKeyClosestToCurrentPosition(state)
-                    remoteKeys?.nextPage?.minus(1) ?: 1
+                    state.anchorPosition?.run {
+                        state.closestItemToPosition(this)?.id?.run {
+                            Log.d("LocationRemoteMediator", "REFRESH "+ this)
+                            locationRemoteKeyDao.getRemoteKey(this)?.nextPage?.minus(1)
+                        }
+                    }?:6
                 }
                 LoadType.PREPEND -> {
-                    val remoteKeys = getRemoteKeyForFirstItem(state)
-                    val prevPage = remoteKeys?.prevPage
-                        ?: return MediatorResult.Success(
-                            endOfPaginationReached = remoteKeys != null
+                    Log.d("PAGE", "PREPEND")
+                    Log.d("LocationRemoteMediator", "PREPEND ")
+                    // load item ở vị trí đầu tiên
+//                    val firstItem = state.pages.firstOrNull()?.data?.firstOrNull() // trả về cache bị xóa
+//                    Log.d("LocationRemoteMediator", "firstItem " + firstItem)
+//                    firstItem?.run {
+//                        locationRemoteKeyDao.getRemoteKey(this.id)?.prevPage
+//                    } ?: kotlin.run {
+//                        // Pre Key = null-> end load
+//                        return MediatorResult.Success(
+//                            endOfPaginationReached = true
+//                        )
+//                    }
+
+                    locationDao.firstLocation()?.run {
+                        Log.d("LocationRemoteMediator", "firstItem " + Gson().toJson(this))
+                        locationRemoteKeyDao.getRemoteKey(this.id)?.prevPage
+                    }?: kotlin.run {
+                        return MediatorResult.Success(
+                            endOfPaginationReached = true
                         )
-                    Log.d("PAGE", prevPage.toString())
-                    prevPage
+                    }
                 }
                 LoadType.APPEND -> {
-                    val remoteKeys = getRemoteKeyForLastItem(state)
-                    val nextPage = remoteKeys?.nextPage
-                        ?: return MediatorResult.Success(
-                            endOfPaginationReached = remoteKeys != null
+                    Log.d("LocationRemoteMediator", "APPEND ")
+                    Log.d("PAGE", "a")
+                    // Load next key
+                    // load last Item
+                    val lastItem = state.pages.lastOrNull()?.data?.lastOrNull()
+                    lastItem?.id?.run {
+                        // next key
+                        Log.d("LocationRemoteMediator", "lastItem " + Gson().toJson(this))
+                        locationRemoteKeyDao.getRemoteKey(this)?.nextPage
+                    } ?: kotlin.run {
+                        // load to end
+                        return MediatorResult.Success(
+                            endOfPaginationReached = true
                         )
-                    Log.d("PAGE", nextPage.toString())
-                    nextPage
+                    }
                 }
             }
             Log.d("PAGE", currentPage.toString())
+            Log.d("LocationRemoteMediator", "currentPage " + currentPage)
             val response = apiService.getPageLocation(currentPage)
-            val endOfPaginationReached = response.results?.run {
-                isEmpty()
-            } ?: true
+            val dataList = response.results?.toMutableList() ?: mutableListOf()
+            val endPaging = response.results.isNullOrEmpty() // end load when list = null || empty
 
-            val prevPage = if (currentPage == 1) null else currentPage - 1
-            val nextPage = if (endOfPaginationReached) null else currentPage + 1
+            Log.d("LocationRemoteMediator", "dataList " + dataList.size)
+            Log.d("LocationRemoteMediator", "dataListName " + dataList.map {
+                it.name
+            })
+            // set index for item
+            dataList.forEachIndexed { index, locationTable ->
+                //index = vị trí trong list of Page
+                locationTable.index = currentPage * 1000 + index
+            }
 
-            database.withTransaction {
+            // sau khi tải đc dữ liệu về;. đổ dữ liệu vào DB
+            database.withTransaction { // Phiên làm việc của DB
                 if (loadType == LoadType.REFRESH) {
+                    // Nếu mà lần đầu tiên tải dữ liệu về . sẽ clear cache cũ đi
                     locationDao.deleteAllLocation()
                     locationRemoteKeyDao.deleteAllRemoteKeys()
                 }
-                val keys = response.results?.map { location ->
-                    LocationRemoteKey(
-                        id = location.id,
-                        prevPage = prevPage,
-                        nextPage = nextPage
+                // insert key => RoomDB
+                val keyList = dataList.map {
+                    LocationKeyTable(
+                        id = it.id,
+                        prevPage = (currentPage - 1).takeIf { it > 0 }, // chỉ nhận giá trị dương >1
+                        nextPage = currentPage + 1
                     )
-                }?: mutableListOf()
-                locationRemoteKeyDao.insertAllRemoteKeys(keys)
-                locationDao.insertAllLocation(response.results?: mutableListOf())
+                }
+                locationRemoteKeyDao.insertAllRemoteKeys(keyList)
+
+                // insert dataLIst => RoomDB
+                locationDao.insertAllLocation(dataList)
             }
-            MediatorResult.Success(endOfPaginationReached = endOfPaginationReached)
+            Log.d("LocationRemoteMediator", "endOfPaginationReached " + endPaging)
+
+            // Thông báo paging biết, là đã kết thúc rồi hay chưa .
+            // còn dữ liệu sẽ đc đổ vào DB
+            MediatorResult.Success(endOfPaginationReached = endPaging)
         } catch (e: Exception) {
+            Log.d("LocationRemoteMediator", "e " + e)
             return MediatorResult.Error(e)
         }
-    }
-    private suspend fun getRemoteKeyClosestToCurrentPosition(
-        state: PagingState<Int, Location>
-    ): LocationRemoteKey? {
-        return state.anchorPosition?.let { position ->
-            state.closestItemToPosition(position)?.id?.let { id ->
-                locationRemoteKeyDao.getRemoteKey(id = id)
-            }
-        }
-    }
-//
-    private suspend fun getRemoteKeyForFirstItem(
-        state: PagingState<Int, Location>
-    ): LocationRemoteKey? {
-        return state.pages.firstOrNull { it.data.isNotEmpty() }?.data?.firstOrNull()
-            ?.let { location ->
-                locationRemoteKeyDao.getRemoteKey(id = location.id)
-            }
-    }
-//
-    private suspend fun getRemoteKeyForLastItem(
-        state: PagingState<Int, Location>
-    ): LocationRemoteKey? {
-        return state.pages.lastOrNull { it.data.isNotEmpty() }?.data?.lastOrNull()
-            ?.let { location ->
-                locationRemoteKeyDao.getRemoteKey(id = location.id)
-            }
     }
 }
